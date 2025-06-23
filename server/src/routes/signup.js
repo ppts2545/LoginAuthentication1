@@ -2,31 +2,32 @@ const express = require('express');
 const router = express.Router();
 const connectMYSQL = require('../config/connection');
 const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 
-router.post('/login-google', async(req, res) => {
-    const { email, password} = req.body
-    //find user command
-    const CheckUser = 'SELECT * FROM users WHERE email =  ?';
+router.post('/signup', async (req, res) => {
+    const { name, email, password} = req.body;
+
+    // Check if user already exists
+    const checkUserQuery = 'SELECT * FROM users WHERE email = ?';
     try {
-        const [rows] = await connectMYSQL.execute(sql, [email])
-        if (rows.length === 0) {
-            return res.status(404).json({ msg: "User not found" });
-        }
-        res.json({ msg: "User exist", user:rows[0]})
-
-        const hashedPassword = rows[0].password;
-        const matchUser = await bcrypt.compare(password, hashedPassword);
-        if (matchUser) {
-            // Generate JWT token
-        } else {
-            return res.status(401).json({ msg: "Invalid credentials" });
+        const [rows] = await connectMYSQL.execute(checkUserQuery, [email]);
+        if (rows.length > 0) {
+            return res.status(400).json({ msg: "User already exists" });
         }
 
-    } catch (err) {
-        res.status(500).json({ msg: "Database error", error: err });
+        // Hash the password
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Insert new user into the database
+        const insertUserQuery = 'INSERT INTO users (name, email, password) VALUES (?, ?, ?)';
+        await connectMYSQL.execute(insertUserQuery, [name, email, hashedPassword]);
+
+        //Generate JWT token
+        const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+        res.status(201).json({ msg: "User registered successfully", token });
+    } catch (error) {
+        console.error("Error during signup:", error);
+        res.status(500).json({ msg: "Internal server error" });
     }
-
-    
 })
-
-module.exports = router;
